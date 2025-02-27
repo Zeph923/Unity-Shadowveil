@@ -8,31 +8,32 @@ public class Enemy : MonoBehaviour
     [SerializeField] private float maxHealth = 50f;
     [SerializeField] private float moveSpeed = 2f;
     [SerializeField] private float attackDamage = 10f;
-    [SerializeField] private float chargeDamage = 20f;
     [SerializeField] private Slider healthBar;
-
-    [Header("Detection Settings")]
-    [SerializeField] private float detectionRange = 10f;
-    [SerializeField] private float attackRange = 2f;
-    [SerializeField] private float chargeRange = 5f;
-    [SerializeField] private float fieldOfView = 90f; // Initial FOV is 90 degrees
 
     [Header("Attack Cooldowns")]
     [SerializeField] private float attackCooldown = 2f;
-    [SerializeField] private float chargeCooldown = 20f;
 
-    [Header("Charge Attack Settings")]
-    [SerializeField] private float chargeSpeed = 10f;
-    [SerializeField] private float chargeDistance = 10f;
+    [Header("Knockback Settings")]
+    [SerializeField] private float knockbackForce = 40000f;
+
+    [Header("Damage Delay Settings")]
+    [SerializeField] private float damageDelay = 0.5f;
+
+    [Header("Detection Settings")]
+    [SerializeField] private float detectionRange = 15f;
+    [SerializeField] private float meleeAttackRange = 2f;
+    [SerializeField] private LayerMask obstacleLayer;
 
     private float currentHealth;
     private Transform player;
+    private CharacterController playerController;
+    private Animator animator;
+
     private bool isAlive = true;
     private bool isStunned = false;
-    private bool isChasing = false;
     private bool isAttacking = false;
     private bool canAttack = true;
-    private bool canCharge = true;
+    private bool isChasing = false;
     private bool hasSeenPlayer = false;
 
     private void Start()
@@ -41,98 +42,92 @@ public class Enemy : MonoBehaviour
         healthBar.maxValue = maxHealth;
         healthBar.value = currentHealth;
 
-        player = GameObject.FindGameObjectWithTag("Player")?.transform;
+        animator = GetComponent<Animator>();
+
+        GameObject playerObject = GameObject.FindGameObjectWithTag("Player");
+        if (playerObject != null)
+        {
+            player = playerObject.transform;
+            playerController = playerObject.GetComponent<CharacterController>();
+        }
     }
 
     private void Update()
     {
-        if (isAlive && player != null && !isStunned)
+        float distanceToPlayer = Vector3.Distance(transform.position, player.position);
+
+        if (distanceToPlayer < detectionRange)
         {
-            // If the enemy sees the player, start chasing and set FOV to 360
-            if (CanSeePlayer())
+            if (!hasSeenPlayer)
             {
-                isChasing = true;
                 hasSeenPlayer = true;
-                fieldOfView = 360f; // Change FOV to 360 degrees once the enemy sees the player
             }
+            if (!isChasing && !isAttacking) isChasing = true;
+        }
 
-            float distanceToPlayer = Vector3.Distance(transform.position, player.position);
-
-            if (hasSeenPlayer)
-            {
-                if (distanceToPlayer <= attackRange)
-                {
-                    isChasing = false;
-                }
-                else if (isChasing && !isAttacking)
-                {
-                    MoveTowardsPlayer();
-                }
-            }
-
-            // Charge attack if the player is far enough
-            if (hasSeenPlayer && distanceToPlayer > chargeRange && canCharge)
-            {
-                StartCoroutine(EnemyChargeAttack());
-            }
-            // Melee attack if the player is within attack range
-            else if (hasSeenPlayer && distanceToPlayer <= attackRange && canAttack)
+        if (hasSeenPlayer && !isAttacking)
+        {
+            if (distanceToPlayer <= meleeAttackRange && canAttack)
             {
                 StartCoroutine(EnemyMeleeAttack());
             }
-        }
-    }
-
-    // Checks if the enemy can see the player
-    private bool CanSeePlayer()
-    {
-        if (player == null) return false;
-
-        Vector3 origin = transform.position + Vector3.down;
-        Vector3 directionToPlayer = (player.position - origin).normalized;
-        float distanceToPlayer = Vector3.Distance(origin, player.position);
-
-        // If the player is out of detection range, return false
-        if (distanceToPlayer > detectionRange) return false;
-
-        // If FOV is 360, no need to check angle
-        if (fieldOfView == 360f)
-        {
-            // Raycast to check if the player is in line of sight
-            if (Physics.Raycast(origin, directionToPlayer, distanceToPlayer))
+            else if (!isAttacking)
             {
-                return false;
+                MoveTowardsPlayer();
             }
-            return true;
         }
-
-        // Check if the player is within the field of view
-        float angleToPlayer = Vector3.Angle(transform.forward, directionToPlayer);
-        if (angleToPlayer > fieldOfView / 2) return false;
-
-        // If the player is blocked by an obstacle, return false
-        if (Physics.Raycast(origin, directionToPlayer, distanceToPlayer))
-        {
-            return false;
-        }
-
-        return true;
     }
 
-    // Move the enemy towards the player
     private void MoveTowardsPlayer()
+    {
+        if (isAttacking) return;
+
+        Vector3 direction = (player.position - transform.position).normalized;
+        if (!Physics.Raycast(transform.position, direction, 1f, obstacleLayer))
+        {
+            transform.position += direction * moveSpeed * Time.deltaTime;
+            animator.SetFloat("Speed", moveSpeed);
+
+            Quaternion targetRotation = Quaternion.LookRotation(direction);
+            transform.rotation = Quaternion.RotateTowards(transform.rotation, targetRotation, Time.deltaTime * 100f);
+        }
+    }
+
+    private IEnumerator EnemyMeleeAttack()
+    {
+        if (!canAttack) yield break;
+
+        isAttacking = true;
+        isChasing = false;
+
+        animator.SetFloat("Speed", 0f);
+        animator.SetTrigger("Attack");
+
+        float attackDuration = animator.GetCurrentAnimatorStateInfo(0).length;
+        yield return new WaitForSeconds(attackDuration * 0.2f);
+
+        if (Vector3.Distance(transform.position, player.position) <= meleeAttackRange)
+        {
+            ApplyDamage(attackDamage);
+        }
+
+        yield return new WaitForSeconds(attackDuration * 0.8f);
+        canAttack = true;
+        isAttacking = false;
+        if (hasSeenPlayer) isChasing = true;
+    }
+
+    private void ApplyDamage(float damage)
     {
         if (player == null) return;
 
-        Vector3 direction = (player.position - transform.position).normalized;
-        transform.position += direction * moveSpeed * Time.deltaTime;
-
-        // Make the enemy face the player in any direction (even if the player is behind)
-        Quaternion rotation = Quaternion.LookRotation(direction);
-        transform.rotation = Quaternion.Slerp(transform.rotation, rotation, Time.deltaTime * moveSpeed);
+        PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
+        if (playerHealth != null)
+        {
+            playerHealth.TakeDamage(damage);
+        }
     }
 
-    // The enemy takes damage
     public void TakeDamage(float damage)
     {
         if (!isAlive || isStunned) return;
@@ -151,20 +146,20 @@ public class Enemy : MonoBehaviour
         }
     }
 
-    // Apply knockback effect when the enemy takes damage
     private void ApplyKnockback()
     {
         if (player == null) return;
 
         Vector3 knockbackDirection = (transform.position - player.position).normalized;
+        knockbackDirection.y = 0f;
+
         Rigidbody rb = GetComponent<Rigidbody>();
         if (rb != null)
         {
-            rb.AddForce(knockbackDirection * 5f, ForceMode.Impulse);
+            rb.AddForce(knockbackDirection * knockbackForce, ForceMode.Impulse);
         }
     }
 
-    // Stun the enemy for a short duration after taking damage
     private IEnumerator StunCoroutine()
     {
         isStunned = true;
@@ -172,94 +167,21 @@ public class Enemy : MonoBehaviour
         isStunned = false;
     }
 
-    // Change the enemy's color to red when damaged
     private void ChangeColorToDamaged()
     {
         GetComponent<Renderer>().material.color = Color.red;
         Invoke("ChangeColorToNormal", 0.2f);
     }
 
-    // Revert the enemy's color to normal
     private void ChangeColorToNormal()
     {
         GetComponent<Renderer>().material.color = Color.white;
     }
 
-    // The enemy dies when health reaches 0
     private void Die()
     {
         isAlive = false;
+        animator.SetTrigger("Die");
         Destroy(gameObject, 2f);
-    }
-
-    // Coroutine for the enemy's melee attack
-    private IEnumerator EnemyMeleeAttack()
-    {
-        if (!canAttack) yield break;
-
-        isAttacking = true;
-        canAttack = false;
-        GetComponent<Renderer>().material.color = Color.yellow;
-
-        yield return new WaitForSeconds(1f);
-
-        // If the player is within attack range, deal damage
-        if (Vector3.Distance(transform.position, player.position) <= attackRange)
-        {
-            PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
-            if (playerHealth != null)
-            {
-                playerHealth.TakeDamage(attackDamage);
-            }
-        }
-
-        ChangeColorToNormal();
-        isAttacking = false;
-
-        yield return new WaitForSeconds(attackCooldown);
-        canAttack = true;
-    }
-
-    // Coroutine for the enemy's charge attack
-    private IEnumerator EnemyChargeAttack()
-    {
-        if (!canCharge) yield break;
-
-        isAttacking = true;
-        canCharge = false;
-        GetComponent<Renderer>().material.color = Color.yellow;
-
-        yield return new WaitForSeconds(1f);
-
-        // Charge towards the player
-        Vector3 chargeDirection = (player.position - transform.position).normalized;
-        Vector3 targetPosition = transform.position + chargeDirection * chargeDistance;
-        targetPosition.y += 1f;
-        float chargeSpeedAdjusted = chargeSpeed * Time.deltaTime;
-
-        while (Vector3.Distance(transform.position, targetPosition) > 0.1f)
-        {
-            transform.position = Vector3.MoveTowards(transform.position, targetPosition, chargeSpeedAdjusted);
-            transform.LookAt(targetPosition);
-
-            // If the player is hit, deal damage
-            if (Vector3.Distance(transform.position, player.position) < 1.5f)
-            {
-                PlayerHealth playerHealth = player.GetComponent<PlayerHealth>();
-                if (playerHealth != null)
-                {
-                    playerHealth.TakeDamage(chargeDamage);
-                }
-                break;
-            }
-
-            yield return null;
-        }
-
-        ChangeColorToNormal();
-        isAttacking = false;
-
-        yield return new WaitForSeconds(chargeCooldown);
-        canCharge = true;
     }
 }

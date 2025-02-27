@@ -1,20 +1,21 @@
 using UnityEngine;
-using TMPro; // For TextMesh Pro
+using TMPro;
 using System.Collections;
 
 public class PickableHandler : MonoBehaviour, IInteractable
 {
     [SerializeField] private ItemData Item;
-    [SerializeField] private CanvasGroup messageCanvasGroup; // CanvasGroup for the message
-    [SerializeField] private TextMeshProUGUI itemMessage; // TextMesh Pro text for the message
-    [SerializeField] private Renderer itemRenderer; // Renderer of the item
-    [SerializeField] private Collider itemCollider; // Collider of the item
-    [SerializeField] private Transform itemCanvas; // Canvas that displays the item name
-    private Transform playerCamera => Camera.main.transform; // Reference to the player's camera
+    [SerializeField] private CanvasGroup messageCanvasGroup;
+    [SerializeField] private TextMeshProUGUI itemMessage;
+    [SerializeField] private Renderer itemRenderer;
+    [SerializeField] private Collider itemCollider;
+    [SerializeField] private Transform itemCanvas;
+    [SerializeField] private string specificItemName = "AladdinsScimitar"; //Το όνομα του συγκεκριμένου αντικειμένου
+
+    private Transform playerCamera => Camera.main.transform;
 
     private void Start()
     {
-        // Ensure the CanvasGroup is initially invisible
         if (messageCanvasGroup != null)
         {
             messageCanvasGroup.alpha = 0f;
@@ -25,42 +26,43 @@ public class PickableHandler : MonoBehaviour, IInteractable
 
     private void Update()
     {
-        // Ensure the itemCanvas always faces the player
         if (itemCanvas != null && playerCamera != null)
         {
             itemCanvas.LookAt(playerCamera);
-            itemCanvas.Rotate(0, 180, 0); // Adjust rotation to face correctly
+            itemCanvas.Rotate(0, 180, 0);
         }
     }
 
     public void Interact()
     {
-        Debug.Log($"You found {Item.name}!", Item); // Display message in Console
+        Debug.Log($"You found {Item.name}!", Item);
+        DisplayMessage($"You found {Item.displayName}!");
+        MakeItemInvisible();
+    }
 
-        DisplayMessage($"You found {Item.displayName}!"); // Show message on screen
-        MakeItemInvisible(); // Hide the item and disable interaction
+    public bool IsSpecificItem()
+    {
+        return Item != null && Item.name == specificItemName; //Έλεγχος αν είναι το συγκεκριμένο αντικείμενο
     }
 
     private void DisplayMessage(string message)
     {
         if (messageCanvasGroup != null && itemMessage != null)
         {
-            itemMessage.text = message; // Set text
-            StopAllCoroutines(); // Stop any ongoing coroutines
-            StartCoroutine(ShowAndHideMessage()); // Show and hide the message
+            itemMessage.text = message;
+            StopAllCoroutines();
+            StartCoroutine(ShowAndHideMessage());
         }
     }
 
     private IEnumerator ShowAndHideMessage()
     {
-        // Show message
         messageCanvasGroup.alpha = 1f;
         messageCanvasGroup.interactable = true;
         messageCanvasGroup.blocksRaycasts = true;
 
-        yield return new WaitForSeconds(2f); // Wait for 2 seconds
+        yield return new WaitForSeconds(2f);
 
-        // Hide message
         messageCanvasGroup.alpha = 0f;
         messageCanvasGroup.interactable = false;
         messageCanvasGroup.blocksRaycasts = false;
@@ -68,15 +70,12 @@ public class PickableHandler : MonoBehaviour, IInteractable
 
     private void MakeItemInvisible()
     {
-        // Hide the item
         if (itemRenderer != null)
             itemRenderer.enabled = false;
 
-        // Disable Collider to prevent further interaction
         if (itemCollider != null)
             itemCollider.enabled = false;
 
-        // Hide the name Canvas
         if (itemCanvas != null)
             itemCanvas.gameObject.SetActive(false);
     }

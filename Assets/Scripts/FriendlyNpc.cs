@@ -29,7 +29,7 @@ public class FriendlyNpc : MonoBehaviour, IInteractable // Implements the IInter
 
     public void Interact()
     {
-        if (dialogues.Length == 0) return;  // If there are no dialogues, do nothing
+        //if (dialogues.Length == 0) return;  // If there are no dialogues, do nothing
 
         if (!firstDialogueShown)
         {

@@ -20,9 +20,9 @@ public class BossBehavior : MonoBehaviour
 
     [Header("Health Settings")]
     public float maxHealth = 100f;
-    [SerializeField] private float currentHealth = 100f; // The current health, visible in the Inspector
-    public TMP_Text healthText; // The TMP_Text that will display the health
-    public Slider healthBar; // The health slider
+    [SerializeField] private float currentHealth = 100f;
+    public TMP_Text healthText;
+    public Slider healthBar;
 
     [Header("Damage Settings")]
     public float chargeDamage = 20f;
@@ -44,9 +44,9 @@ public class BossBehavior : MonoBehaviour
     [Header("UI Settings")]
     public Canvas bossCanvas;
     public TMP_Text bossNameText;
-    public Canvas winConditionCanvas; // The canvas that appears when the boss dies
-    public TMP_Text winConditionText; // The TextMeshPro that will display the death message of the boss
-    public Canvas deathCanvas; // The canvas displayed when the boss dies
+    public Canvas deathCanvas; // Death UI αν χρειαστείς για έξτρα visuals
+
+    private WinCondition winCondition;  // Το νέο reference
 
     private float chargeCooldownTimer = 0f;
     private float meleeCooldownTimer = 0f;
@@ -54,23 +54,35 @@ public class BossBehavior : MonoBehaviour
     private bool isChasing = false;
     private bool isAttacking = false;
     private bool hasSeenPlayer = false;
-    private bool isDead = false; // A flag to check if the boss is dead
+    private bool isDead = false;
 
     private void Start()
     {
         currentHealth = maxHealth;
-        healthBar.maxValue = maxHealth; // Set the max value of the slider
-        healthBar.minValue = 0f; // Set the min value of the slider
-        healthBar.value = currentHealth; // Set the initial value of the slider based on currentHealth
+        healthBar.maxValue = maxHealth;
+        healthBar.minValue = 0f;
+        healthBar.value = currentHealth;
         bossCanvas.gameObject.SetActive(false);
-        winConditionCanvas.gameObject.SetActive(false);
-        deathCanvas.gameObject.SetActive(false); // Initially, the deathCanvas is deactivated
-        UpdateHealthText(); // Update the health in the UI
+        deathCanvas.gameObject.SetActive(false);
+        UpdateHealthText();
+
+        // Παίρνουμε το WinCondition component από τη σκηνή (ή το συνδέεις από το Inspector)
+        winCondition = FindObjectOfType<WinCondition>();
+
+        if (winCondition == null)
+        {
+            Debug.LogError("WinCondition component not found in scene!");
+        }
     }
 
     private void Update()
     {
-        if (isDead) return; // If the boss is dead, stop all other actions
+        if (isDead) return;
+
+        if (Input.GetKeyDown(KeyCode.B))
+        {
+            TakeDamage(10f);
+        }
 
         float distanceToPlayer = Vector3.Distance(transform.position, player.transform.position);
 
@@ -81,7 +93,10 @@ public class BossBehavior : MonoBehaviour
                 hasSeenPlayer = true;
                 bossCanvas.gameObject.SetActive(true);
             }
-            if (!isChasing && !isAttacking) isChasing = true;
+            if (!isChasing && !isAttacking)
+            {
+                isChasing = true;
+            }
         }
 
         if (hasSeenPlayer && !isAttacking)
@@ -92,14 +107,21 @@ public class BossBehavior : MonoBehaviour
             }
             else if (distanceToPlayer <= meleeAttackRange)
             {
-                if (meleeCooldownTimer <= 0f) StartCoroutine(MeleeAttack());
-                else meleeCooldownTimer -= Time.deltaTime;
+                if (meleeCooldownTimer <= 0f)
+                {
+                    StartCoroutine(MeleeAttack());
+                }
+                else
+                {
+                    meleeCooldownTimer -= Time.deltaTime;
+                }
             }
             else if (!isCharging)
             {
                 ChasePlayer();
             }
         }
+
         chargeCooldownTimer -= Time.deltaTime;
     }
 
@@ -190,15 +212,18 @@ public class BossBehavior : MonoBehaviour
 
     public void TakeDamage(float damage)
     {
-        if (isDead) return; // If the boss is already dead, we do nothing
+        if (isDead) return;
 
         currentHealth -= damage;
-        healthBar.value = currentHealth; // Update the slider with the current health value
-        UpdateHealthText(); // Update the health text
+        healthBar.value = currentHealth;
+        UpdateHealthText();
 
         animator.SetTrigger(damageAnimationTrigger);
 
-        if (currentHealth <= 0 && !isDead) Die(); // If health reaches 0 and the boss is not already dead
+        if (currentHealth <= 0 && !isDead)
+        {
+            Die();
+        }
     }
 
     private bool IsPlayerInFront()
@@ -210,20 +235,19 @@ public class BossBehavior : MonoBehaviour
 
     public void Die()
     {
-        isDead = true; // Set the dead flag to true
+        isDead = true;
+        animator.SetTrigger(dieAnimationTrigger);
+        StopAllCoroutines();
 
-        animator.SetTrigger(dieAnimationTrigger); // Play the death animation
-        StopAllCoroutines(); // Stop all active coroutines (such as movement and attacking)
+        // Ενημερώνει το WinCondition αν υπάρχει
+        if (winCondition != null)
+        {
+            winCondition.TriggerWinCondition();
+        }
 
-        // Activate the win condition canvas with the message
-        winConditionCanvas.gameObject.SetActive(true);
-        winConditionText.text = "THESPESIA"; // Update the text with the message "THESPESIA"
-
-        // Destroy the boss after 5 seconds
         Destroy(gameObject, 5f);
     }
 
-    // Method to update the health text in the UI
     private void UpdateHealthText()
     {
         if (healthText != null)
